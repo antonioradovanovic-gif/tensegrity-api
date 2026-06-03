@@ -1,0 +1,284 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id          String      @id @default(cuid())
+  email       String      @unique
+  password    String
+  firstName   String
+  lastName    String
+  dateOfBirth DateTime?
+  gender      Gender?
+  phoneNumber String?
+  occupation  Occupation?
+  role        Role        @default(CLIENT) //jedino je Marko admin
+  status      UserStatus  @default(PENDING) //admin odobrava zahtjeve
+  clientType  ClientType? //online ili uživo
+
+  // ispunjava se u drugom koraku
+  //ciljevi 
+  mainGoal            String?
+  goalReason          String?
+  successCriteria     String?
+  isInRehabilitation  Boolean @default(false)
+  medicalHistory      Json? // online upitnik (ako nije uploadan PDF)
+  liabilityAccepted   Boolean @default(false) // je li označio kvačicu da se slaže sa uvjetima korištenja
+  onboardingCompleted Boolean @default(false) //kad se klijent prvi put ulogira izbaci mu se forma za ispunjavanje cijeva i dokumenata, nakon toga se onboarding oznaci sa true ako se klikne na gumb POTVRDI na kraju forme, kasnije se može dorađivati
+
+  weeklyGoal       Int?           // 2, 3, 4 ili 5 treninga tjedno
+  monthlyStreak    Int            @default(0) // trenutni niz mjeseci s ispunjenim ciljem
+  maxMonthlyStreak Int            @default(0) // najviši streak ikad (za trajne medalje)
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt //kad uredi klijent može se vidjeti
+  isActive         Boolean        @default(true)
+
+  refreshToken     String?
+  documents        UserDocument[]
+  createdExercises Exercise[]
+  clientWorkouts   Workout[]      @relation("ClientWorkouts")
+  assignedWorkouts Workout[]      @relation("AssignedBy")
+  completedWorkouts WorkoutCompletion[] @relation("WorkoutCompletedBy")
+  notes            ClientNote[]   @relation("ClientNotes")
+  payments         Payment[]      @relation("ClientPayments")
+  posts            Post[]         @relation("PostsCreatedBy")
+}
+
+//za odricanje odgovornosti napraviti samo kratki upitnik gdje se oznaci kvacica?
+model UserDocument {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+  type      DocumentType // LIABILITY ili MEDICAL
+   createdAt DateTime @default(now())
+  // accepted    Boolean  @default(false)
+  // filled      Boolean  @default(false) //mislim da ne treba jer ce se samo dodati u listu dokumenata
+  fileUrl   String?
+  updatedAt DateTime     @updatedAt
+}
+
+model Exercise {
+  id String @id @default(cuid())
+
+  category    ExerciseCategory
+  subcategory String?
+
+  name        String
+  description String?
+
+  videoUrl String?
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workoutExercises         WorkoutExercise[]
+  workoutTemplateExercises WorkoutTemplateExercise[]
+}
+
+model Workout {
+  id String @id @default(cuid())
+
+  title String
+
+  clientId String
+  client   User   @relation("ClientWorkouts", fields: [clientId], references: [id])
+
+  assignedById String
+  assignedBy   User   @relation("AssignedBy", fields: [assignedById], references: [id])
+
+  type WorkoutType
+
+  scheduledDate DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  status WorkoutStatus @default(PLANNED) //klijent nakon što odradi trening ili preskoči označava
+
+  wasInRehabilitation Boolean @default(false) // snapshot statusa klijenta u trenutku kreiranja treninga
+
+  exercises WorkoutExercise[]
+  completion WorkoutCompletion?
+
+  @@index([clientId])
+  @@index([scheduledDate])
+  @@index([status])
+}
+
+model WorkoutExercise {
+  id String @id @default(cuid())
+
+  workoutId String
+  workout   Workout @relation(fields: [workoutId], references: [id])
+
+  exerciseId String
+  exercise   Exercise @relation(fields: [exerciseId], references: [id])
+
+  order Int
+
+  sets Int?
+  reps Int?
+
+  duration Int?
+
+  weight Float?
+
+  rpe Int?
+  vas Int?
+
+  restSeconds Int?
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WorkoutCompletion {
+  id String @id @default(cuid())
+
+  workoutId String @unique
+  workout Workout @relation(fields: [workoutId], references: [id])
+
+  completedById String?
+  completedBy User? @relation("WorkoutCompletedBy", fields: [completedById], references: [id])
+
+  completed Boolean
+
+  feeling Int? // 1-5
+
+  feedbackNote String?
+
+  rehabilitationAnswers Json?
+
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum Occupation {
+  SEDENTARY
+  PHYSICALLY_ACTIVE
+}
+
+enum Role {
+  CLIENT
+  ADMIN
+}
+
+enum ClientType {
+  ONLINE
+  IN_PERSON
+}
+
+enum UserStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DocumentType {
+  LIABILITY
+  MEDICAL
+}
+
+enum ExerciseCategory {
+  CHEST
+  BACK
+  LEGS
+  SHOULDERS
+  BICEPS
+  TRICEPS
+  CORE
+  MOBILITY
+  REHAB
+}
+
+enum WorkoutType {
+  ONLINE
+  LIVE
+}
+
+enum WorkoutStatus {
+  PLANNED
+  COMPLETED
+  SKIPPED
+  CANCELLED
+}
+
+model ClientNote {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    User     @relation("ClientNotes", fields: [clientId], references: [id])
+  content   String
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      User     @relation("ClientPayments", fields: [clientId], references: [id])
+  month       Int
+  year        Int
+  amount      Float
+  description String?
+  isPaid      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clientId])
+}
+
+model Post {
+  id          String   @id @default(cuid())
+  content     String
+  createdById String
+  createdBy   User     @relation("PostsCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
+model WorkoutTemplate {
+  id          String                    @id @default(cuid())
+  name        String
+  description String?
+  exercises   WorkoutTemplateExercise[]
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+}
+
+model WorkoutTemplateExercise {
+  id         String          @id @default(cuid())
+  templateId String
+  template   WorkoutTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  exerciseId String
+  exercise   Exercise        @relation(fields: [exerciseId], references: [id])
+  order      Int
+  createdAt  DateTime        @default(now())
+
+  @@index([templateId])
+}
